@@ -2,18 +2,20 @@ package httpapi
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"os"
-	"sync/atomic"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type Server struct {
-	version  string
-	hostname string
-	started  time.Time
-	requests atomic.Uint64
+	version        string
+	hostname       string
+	started        time.Time
+	requests       prometheus.Counter
+	metricsHandler http.Handler
 }
 
 func New(version string) http.Handler {
@@ -26,21 +28,37 @@ func New(version string) http.Handler {
 		version:  version,
 		hostname: hostname,
 		started:  time.Now().UTC(),
+		requests: prometheus.NewCounter(prometheus.CounterOpts{
+			Namespace: "k3s_sample",
+			Name:      "http_requests_total",
+			Help:      "Total HTTP requests handled.",
+		}),
 	}
+
+	registry := prometheus.NewRegistry()
+	registry.MustRegister(server.requests)
+	registry.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: "k3s_sample",
+		Name:      "uptime_seconds",
+		Help:      "Process uptime in seconds.",
+	}, func() float64 {
+		return time.Since(server.started).Seconds()
+	}))
+	server.metricsHandler = promhttp.HandlerFor(registry, promhttp.HandlerOpts{})
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /", server.handleIndex)
 	mux.HandleFunc("GET /healthz", server.handleHealthz)
 	mux.HandleFunc("GET /readyz", server.handleReadyz)
 	mux.HandleFunc("GET /version", server.handleVersion)
-	mux.HandleFunc("GET /metrics", server.handleMetrics)
+	mux.Handle("GET /metrics", server.metricsHandler)
 
 	return server.countRequests(mux)
 }
 
 func (s *Server) countRequests(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		s.requests.Add(1)
+		s.requests.Inc()
 		next.ServeHTTP(w, r)
 	})
 }
@@ -71,19 +89,6 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 	respondJSON(w, http.StatusOK, map[string]string{
 		"version": s.version,
 	})
-}
-
-func (s *Server) handleMetrics(w http.ResponseWriter, r *http.Request) {
-	uptime := time.Since(s.started).Seconds()
-
-	w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "# HELP k3s_sample_http_requests_total Total HTTP requests handled.\n")
-	fmt.Fprintf(w, "# TYPE k3s_sample_http_requests_total counter\n")
-	fmt.Fprintf(w, "k3s_sample_http_requests_total %d\n", s.requests.Load())
-	fmt.Fprintf(w, "# HELP k3s_sample_uptime_seconds Process uptime in seconds.\n")
-	fmt.Fprintf(w, "# TYPE k3s_sample_uptime_seconds gauge\n")
-	fmt.Fprintf(w, "k3s_sample_uptime_seconds %.0f\n", uptime)
 }
 
 func respondJSON(w http.ResponseWriter, status int, payload any) {

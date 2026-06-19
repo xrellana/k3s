@@ -59,6 +59,10 @@ metadata:
   namespace: k3s-sample
   labels:
     app.kubernetes.io/name: k3s-sample
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/path: /metrics
+    prometheus.io/port: "80"
 spec:
   type: ClusterIP
   selector:
@@ -85,3 +89,20 @@ spec:
                 name: k3s-sample
                 port:
                   name: http
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: k3s-sample
+  namespace: k3s-sample
+  labels:
+    app.kubernetes.io/name: k3s-sample
+    release: prometheus
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: k3s-sample
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s

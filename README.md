@@ -36,11 +36,11 @@ go test ./...
 docker build -t k3s-sample:latest .
 ```
 
-For a real registry, replace `YOUR_GITHUB_USERNAME` in `k8s/app.yaml` and push:
+For GHCR, build and push:
 
 ```sh
-docker tag k3s-sample:latest ghcr.io/YOUR_GITHUB_USERNAME/k3s-sample:latest
-docker push ghcr.io/YOUR_GITHUB_USERNAME/k3s-sample:latest
+docker tag k3s-sample:latest ghcr.io/xrellana/k3s-sample:latest
+docker push ghcr.io/xrellana/k3s-sample:latest
 ```
 
 ## Deploy to k3s
